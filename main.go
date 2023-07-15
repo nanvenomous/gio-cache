@@ -46,15 +46,14 @@ func main() {
 
 		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Set("ETag", currentVersion)
-		if match := r.Header.Get("If-None-Match"); match != "" {
-			if match == currentVersion {
-				log.Println("[CACHED]")
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
+		var match = r.Header.Get("If-None-Match")
+		if match == currentVersion {
+			log.Println("[CACHED]")
+			w.WriteHeader(http.StatusNotModified)
+			return
 		}
 		incTimesServed()
-		log.Println("[UPDATING] ", getTimesServed())
+		log.Println("[UPDATING RESOURCE]", getTimesServed(), "[LOCAL]", currentVersion, "[BROWSER]", match)
 
 		wasmBinaryServer.ServeHTTP(w, r)
 	})
