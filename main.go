@@ -20,8 +20,7 @@ const (
 
 var (
 	timesServed uint64
-	// currentVersion = "v0.0.14"
-	mu sync.Mutex
+	mu          sync.Mutex
 )
 
 func incTimesServed() {
@@ -37,9 +36,11 @@ func getTimesServed() uint64 {
 }
 
 func main() {
-	wasmBinaryServer := http.FileServer(http.Dir(staticDir))
+	var (
+		currentVersion   = os.Getenv(wasmBinarVersionEnvVar)
+		wasmBinaryServer = http.FileServer(http.Dir(staticDir))
+	)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		var currentVersion = os.Getenv(wasmBinarVersionEnvVar)
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", methods)
 
