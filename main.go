@@ -3,59 +3,51 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"sync"
 )
 
 const (
 	origin                 = "*"
 	methods                = "GET"
-	cacheControl           = "public, max-age=31536000"
+	cacheControl           = "no-cache"
 	wasmBinarVersionEnvVar = "WASM_BINARY_VERSION"
 	port                   = "5173"
 	staticDir              = "bin"
+	compressedWASMFile     = "/main.wasm.br"
 )
-
-var (
-	timesServed uint64
-	mu          sync.Mutex
-)
-
-func incTimesServed() {
-	mu.Lock()
-	defer mu.Unlock()
-	timesServed++
-}
-
-func getTimesServed() uint64 {
-	mu.Lock()
-	defer mu.Unlock()
-	return timesServed
-}
 
 func main() {
 	var (
-		currentVersion   = os.Getenv(wasmBinarVersionEnvVar)
-		wasmBinaryServer = http.FileServer(http.Dir(staticDir))
+		currentVersion = os.Getenv(wasmBinarVersionEnvVar)
+		fileServer     = http.FileServer(http.Dir(staticDir))
 	)
+	if currentVersion == "" {
+		panic(fmt.Errorf("You must set the env var: %s", wasmBinarVersionEnvVar))
+	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", methods)
-
-		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Set("ETag", currentVersion)
+		w.Header().Set("Cache-Control", cacheControl)
+
 		var match = r.Header.Get("If-None-Match")
+		cacheDiff := fmt.Sprintf("%s -> %s", match, currentVersion)
 		if match == currentVersion {
-			log.Println("[CACHED]")
+			green("CACHED", fmt.Sprintf("%s %s", r.URL.Path, cacheDiff))
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		incTimesServed()
-		log.Println("[UPDATING RESOURCE]", getTimesServed(), "[LOCAL]", currentVersion, "[BROWSER]", match)
+		yellow("SERVED", fmt.Sprintf("%s %s", r.URL.Path, cacheDiff))
 
-		wasmBinaryServer.ServeHTTP(w, r)
+		if r.URL.Path == compressedWASMFile {
+			w.Header().Set("Vary", "Accept-Encoding")
+			w.Header().Set("Content-Encoding", "br")
+			w.Header().Set("Content-Type", "application/wasm")
+		}
+		fileServer.ServeHTTP(w, r)
 	})
 
 	log.Println("Serving WASM app on port ", port)

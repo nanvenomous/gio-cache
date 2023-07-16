@@ -1,12 +1,14 @@
 # [gio ui](https://gioui.org/) caching mechanism
 
-### gio-cache serves 2 main purposes
+### gio-cache serves 3 main purposes
 
-1. caches your WASM binary in a users browser based on a semantic version
+1. Caches your WASM binary in a users browser based on a semantic version in the ETag
 ![gio cache running example](./.rsrc/gio-cache.png)
 
-2. shows a simple css spinner while your binary is being loaded & initialized in the browser
+2. Shows a simple css spinner while your binary is being loaded & initialized in the browser
 ![simple css spinner](./.rsrc/simple_css_spinner.gif)
+
+3. Compresses the main.wasm using [brotli](https://github.com/google/brotli) & serves the compressed version
 
 # Usage
 - place your wasm binary under this project directory in the bin dir
@@ -19,7 +21,7 @@ make
 ```
 - override any static files for your loading screen
 ```
-make override-static-files
+make setup
 ```
 - serve the app
 ```
