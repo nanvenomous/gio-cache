@@ -27,3 +27,27 @@ make setup
 ```
 WASM_BINARY_VERSION=v0.0.3 ./gio-cache
 ```
+
+# Testing
+### unit tests
+```
+go test ./...
+```
+
+### using curl
+- run the server
+```
+WASM_BINARY_VERSION=v0.0.1 go run ./...
+```
+- check you can download file with correct size
+```
+curl -sH 'Accept-encoding: gzip' http://127.0.0.1:5173/main.wasm -v -O 
+```
+- you should then get a 304 if you request the same version
+```
+curl -sH 'Accept-encoding: gzip' -H 'If-None-Match: v0.0.1' http://127.0.0.1:5173/main.wasm -v -O 
+```
+- TODO convert these to go tests
+
+### in browser
+- finally the best way is to request the resources in a browser

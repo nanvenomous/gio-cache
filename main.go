@@ -3,12 +3,15 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
-	"io"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -19,43 +22,68 @@ const (
 	port                   = "5173"
 	staticDir              = "bin"
 
-	commonWASMPath   = "/main.wasm"
+	commonWASMPath = "/main.wasm"
 	gzipWASMPath   = "/main.wasm.gz"
-	brotliWASMPath   = "/main.wasm.br"
-
-	commonFile []byte
-	gzipFile []byte
-	brotliFile []byte
+	brotliWASMPath = "/main.wasm.br"
+	zstdWASMPath   = "/main.wasm.zst"
 )
 
-func main() {
-	{
-		f, err := os.Open(gzipWASMPath);
-		if  err == nil {
-			gzipFile, _ = io.ReadAll(f)
-		}
-	}
+type Binary struct {
+	Path, Directive string
+	Bytes           []byte
+	Valid           bool
+}
 
-	{
-		f, err := os.Open(brotliWASMPath);
-		if  err == nil {
-			brotliFile, _ = io.ReadAll(f)
-		}
+var (
+	defaultBin = &Binary{Path: commonWASMPath, Directive: "identity"}
+	binaries   = []*Binary{
+		{Path: brotliWASMPath, Directive: "br"},
+		{Path: zstdWASMPath, Directive: "zstd"},
+		{Path: gzipWASMPath, Directive: "gzip"},
+		defaultBin,
 	}
+)
 
-	{
-		f, err := os.Open(commonWASMPath);
-		if  err == nil {
-			commonFile, _ = io.ReadAll(f)
+func getMatchingBinary(acceptEncodingHeader string) *Binary {
+	for _, bin := range binaries {
+		for _, v := range strings.Split(acceptEncodingHeader, ",") {
+			v = strings.TrimSpace(v)
+			if len(v) <= 0 {
+				continue
+			}
+			ve := strings.Split(v, ";")
+			if len(ve) <= 0 {
+				continue
+			}
+
+			if bin.Directive == ve[0] && bin.Valid {
+				return bin
+			}
 		}
 	}
-	
+	return defaultBin
+}
+
+func gioCache() error {
+	var (
+		err error
+	)
+	for _, bin := range binaries {
+		var fl *os.File
+		fl, err = os.Open(filepath.Join(staticDir, bin.Path))
+		if err == nil {
+			bin.Bytes, err = io.ReadAll(fl)
+			if err == nil {
+				bin.Valid = true
+			}
+		}
+	}
 	var (
 		currentVersion = os.Getenv(wasmBinarVersionEnvVar)
 		fileServer     = http.FileServer(http.Dir(staticDir))
 	)
 	if currentVersion == "" {
-		panic(fmt.Errorf("You must set the env var: %s", wasmBinarVersionEnvVar))
+		return fmt.Errorf("You must set the env var: %s", wasmBinarVersionEnvVar)
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -70,49 +98,28 @@ func main() {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		yellow("SERVED", fmt.Sprintf("%s %s", r.URL.Path, cacheDiff))
 
-		
-		if r.URL.Path == commonWASMFile {
+		if r.URL.Path == commonWASMPath {
+			var matchedBin = getMatchingBinary(r.Header.Get("Accept-Encoding"))
 
-			content := commonFile
-			compression := ""
-			
-			for _, v := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
-				if len(v) <= 0 {
-					continue
-				}
-				ve := strings.Split(v, ";")
-				if len(ve) <= 0 {
-					continue
-				}
-				switch ve[0] {
-				case "br", " br":
-					compression = "br"
-					break
-				case "gzip", " gzip":
-					compression = "gzip"
-				}
-			}
-		
-			switch {
-			case compression == "br" && brotliFile != nil:
-				content = brotliWASMFile
-			case compression == "gzip" && gzipFile != nil:
-				content = gzipWASMFile
-			}
-		
-			if compression != "" {
-				w.Header().Add("Content-Encoding", compression)
-			}
-		
-			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(content))
+			w.Header().Set("Content-Type", "application/wasm")
+			w.Header().Add("Content-Encoding", matchedBin.Directive)
+			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(matchedBin.Bytes))
+			yellow("SERVED", fmt.Sprintf("%s %s %s", r.URL.Path, cacheDiff, matchedBin.Directive))
 			return
 		}
+		yellow("SERVED", fmt.Sprintf("%s %s", r.URL.Path, cacheDiff))
 
 		fileServer.ServeHTTP(w, r)
 	})
 
 	log.Println("Serving WASM app on port ", port)
 	http.ListenAndServe(":"+port, nil)
+	return nil
+}
+
+func main() {
+	if err := gioCache(); err != nil {
+		panic(err)
+	}
 }

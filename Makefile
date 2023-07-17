@@ -4,5 +4,5 @@ build:
 setup:
 	cp ./static/* ./bin/
 	brotli -k -Z -f bin/main.wasm
-	rm bin/main.wasm
-	sed -i 's/main\.wasm/main\.wasm\.br/g' bin/wasm.js 
+	zstd -z --ultra -22 bin/main.wasm
+	gzip -k -9 bin/main.wasm
