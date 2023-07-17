@@ -103,7 +103,7 @@ func main() {
 			}
 		
 			if compression != "" {
-				h.Add("Content-Encoding", compression)
+				w.Header().Add("Content-Encoding", compression)
 			}
 		
 			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(content))
