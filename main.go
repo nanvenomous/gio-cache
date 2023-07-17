@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"io"
+	"strings"
 )
 
 const (
@@ -16,10 +18,38 @@ const (
 	wasmBinarVersionEnvVar = "WASM_BINARY_VERSION"
 	port                   = "5173"
 	staticDir              = "bin"
-	compressedWASMFile     = "/main.wasm.br"
+
+	commonWASMPath   = "/main.wasm"
+	gzipWASMPath   = "/main.wasm.gz"
+	brotliWASMPath   = "/main.wasm.br"
+
+	commonFile []byte
+	gzipFile []byte
+	brotliFile []byte
 )
 
 func main() {
+	{
+		f, err := os.Open(gzipWASMPath);
+		if  err == nil {
+			gzipFile, _ = io.ReadAll(f)
+		}
+	}
+
+	{
+		f, err := os.Open(brotliWASMPath);
+		if  err == nil {
+			brotliFile, _ = io.ReadAll(f)
+		}
+	}
+
+	{
+		f, err := os.Open(commonWASMPath);
+		if  err == nil {
+			commonFile, _ = io.ReadAll(f)
+		}
+	}
+	
 	var (
 		currentVersion = os.Getenv(wasmBinarVersionEnvVar)
 		fileServer     = http.FileServer(http.Dir(staticDir))
@@ -42,11 +72,44 @@ func main() {
 		}
 		yellow("SERVED", fmt.Sprintf("%s %s", r.URL.Path, cacheDiff))
 
-		if r.URL.Path == compressedWASMFile {
-			w.Header().Set("Vary", "Accept-Encoding")
-			w.Header().Set("Content-Encoding", "br")
-			w.Header().Set("Content-Type", "application/wasm")
+		
+		if r.URL.Path == commonWASMFile {
+
+			content := commonFile
+			compression := ""
+			
+			for _, v := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+				if len(v) <= 0 {
+					continue
+				}
+				ve := strings.Split(v, ";")
+				if len(ve) <= 0 {
+					continue
+				}
+				switch ve[0] {
+				case "br", " br":
+					compression = "br"
+					break
+				case "gzip", " gzip":
+					compression = "gzip"
+				}
+			}
+		
+			switch {
+			case compression == "br" && brotliFile != nil:
+				content = brotliWASMFile
+			case compression == "gzip" && gzipFile != nil:
+				content = gzipWASMFile
+			}
+		
+			if compression != "" {
+				h.Add("Content-Encoding", compression)
+			}
+		
+			http.ServeContent(writer, request, "", time.Time{}, bytes.NewReader(content))
+			return
 		}
+
 		fileServer.ServeHTTP(w, r)
 	})
 
