@@ -106,7 +106,7 @@ func main() {
 				h.Add("Content-Encoding", compression)
 			}
 		
-			http.ServeContent(writer, request, "", time.Time{}, bytes.NewReader(content))
+			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(content))
 			return
 		}
 
